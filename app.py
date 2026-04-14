@@ -1,22 +1,20 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.datasets import fetch_california_housing
 from sklearn.ensemble import RandomForestRegressor
 
-# --- КОНФИГУРАЦИЯ СТРАНИЦЫ ---
-st.set_page_config(page_title="California Home AI", page_icon="🏠", layout="wide")
+# --- КОНФИГУРАЦИЯ СТРАНИЦЫ И ТЕМЫ ---
+# Устанавливаем широкую верстку и заголовок вкладки
+st.set_page_config(page_title="Калькулятор цен: Калифорния", page_icon="🏠", layout="wide")
 
-# Стиль для кнопок и метрик
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    </style>
-    """, unsafe_allow_html=True)
+# Задаем красивую тему для всех графиков Seaborn
+sns.set_theme(style="whitegrid", palette="muted")
+plt.rc('figure', figsize=(10, 5)) # Делаем графики по умолчанию шире
 
-# --- ЗАГРУЗКА ДАННЫХ ---
+# --- ЗАГРУЗКА ДАННЫХ (с кэшированием) ---
 @st.cache_data
 def load_data():
     housing = fetch_california_housing()
@@ -26,44 +24,50 @@ def load_data():
 
 X, y = load_data()
 
-# --- ОБУЧЕНИЕ МОДЕЛИ ---
+# --- ОБУЧЕНИЕ МОДЕЛИ (с кэшированием) ---
 @st.cache_resource
 def train_model():
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    # Используем меньше деревьев для скорости и стабильности на бесплатном тарифе
+    model = RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=-1)
     model.fit(X, y)
     return model
 
 model = train_model()
 
-# --- ЗАГОЛОВОК ---
-st.title("🏠 California Real Estate AI Predictor")
-st.write("Используйте панель слева, чтобы настроить параметры дома и получить мгновенную оценку стоимости.")
+# --- ГЛАВНЫЙ ЗАГОЛОВОК И ОПИСАНИЕ ---
+st.title("🏠 Умная оценка недвижимости в Калифорнии")
+st.markdown("""
+    Этот ИИ-ассистент предсказывает стоимость жилья на основе исторических данных. 
+    **Настройте параметры дома в панели слева**, чтобы получить мгновенный расчет.
+""")
+st.divider()
 
-# --- SIDEBAR (ВВОД ДАННЫХ) ---
-st.sidebar.header("⚙️ Характеристики дома")
+# --- SIDEBAR (Панель управления) ---
+# Убираем дублирование, используем только один заголовок
+st.sidebar.header("⚙️ Параметры дома")
 
-def user_input_features():
+# Функция для сбора ввода пользователя в правильном порядке
+def get_user_input():
     inputs = {}
     
-    # Сначала создаем слайдеры в боковой панели (в любом порядке)
-    st.sidebar.header("⚙️ Характеристики дома")
+    # Группа 1: Локация
+    with st.sidebar.expander("📍 Местоположение", expanded=True):
+        lon = st.slider("Долгота", float(X.Longitude.min()), float(X.Longitude.max()), -118.2) # Дефолт: LA
+        lat = st.slider("Широта", float(X.Latitude.min()), float(X.Latitude.max()), 34.0)
     
-    with st.sidebar.expander("📍 Локация и возраст", expanded=True):
-        lon = st.slider("Долгота", float(X.Longitude.min()), float(X.Longitude.max()), float(X.Longitude.mean()))
-        lat = st.slider("Широта", float(X.Latitude.min()), float(X.Latitude.max()), float(X.Latitude.mean()))
-        age = st.slider("Возраст дома (лет)", 1.0, 52.0, 28.0)
+    # Группа 2: Дом
+    with st.sidebar.expander("🏗️ Описание здания", expanded=True):
+        age = st.slider("Возраст дома (лет)", 1.0, 52.0, 20.0)
+        rooms = st.slider("Всего комнат", 1.0, 15.0, 5.0)
+        bedrms = st.slider("Из них спален", 1.0, 8.0, 2.0)
+        occup = st.slider("Среднее кол-во жильцов", 1.0, 10.0, 3.0)
 
-    with st.sidebar.expander("🏗️ Параметры здания", expanded=True):
-        rooms = st.slider("Среднее кол-во комнат", 1.0, 10.0, 5.0)
-        bedrms = st.slider("Среднее кол-во спален", 1.0, 5.0, 1.0)
-        occup = st.slider("Жильцов в доме (среднее)", 1.0, 6.0, 3.0)
-
+    # Группа 3: Район
     with st.sidebar.expander("💰 Экономика района"):
-        inc = st.slider("Средний доход (в $10k)", 0.5, 15.0, 3.8)
-        pop = st.number_input("Население района", value=1500)
+        inc = st.slider("Ср. доход населения (в $10k)", 0.5, 15.0, 4.0)
+        pop = st.number_input("Население района (чел.)", value=1500, step=100)
 
-    # А ТЕПЕРЬ САМОЕ ВАЖНОЕ: собираем словарь строго по порядку колонок из X
-    # Это гарантирует, что модель не запутается
+    # ОЧЕНЬ ВАЖНО: Соблюдаем точный порядок колонок датасета для модели!
     ordered_input = {
         'MedInc': inc,
         'HouseAge': age,
@@ -74,76 +78,106 @@ def user_input_features():
         'Latitude': lat,
         'Longitude': lon
     }
-
     return pd.DataFrame(ordered_input, index=[0])
-input_df = user_input_features()
 
-# --- РАСЧЕТ ПРЕДСКАЗАНИЯ ---
-prediction = model.predict(input_df)[0]
-scaled_price = prediction * 100000
-avg_price = y.mean() * 100000
+# Получаем данные пользователя
+input_df = get_user_input()
 
-# --- ГЛАВНЫЕ МЕТРИКИ ---
-c1, c2, c3 = st.columns(3)
-delta = scaled_price - avg_price
+# Убедимся, что данные для предсказания не содержат NaN (если Population был пуст)
+if input_df.isnull().values.any():
+    st.error("Пожалуйста, заполните все поля в панели слева.")
+    st.stop()
 
-with c1:
-    st.metric("Предсказанная цена", f"${scaled_price:,.0f}", delta=f"{delta:,.0f}")
-with c2:
-    st.metric("Средняя по штату", f"${avg_price:,.0f}")
-with c3:
-    status = "Выше рынка" if delta > 0 else "Ниже рынка"
-    st.metric("Статус объекта", status)
+# --- РАСЧЕТ И ПРЕДСКАЗАНИЕ ---
+with st.spinner('ИИ рассчитывает цену...'):
+    prediction = model.predict(input_df)[0]
+    scaled_price = prediction * 100000 # Цена в датасете в $100k
+    avg_price_state = y.mean() * 100000
+
+# --- БЛОК 1: РЕЗУЛЬТАТЫ (Метрики) ---
+col1, col2, col3 = st.columns(3)
+
+# Оформляем метрики
+col1.metric(
+    label="🔮 Предсказанная стоимость", 
+    value=f"${scaled_price:,.0f}",
+    delta=f"{scaled_price - avg_price_state:,.0f} $ от средней",
+    help="Это оценка, основанная на выбранных вами параметрах"
+)
+
+col2.metric(
+    label="📊 Средняя по Калифорнии", 
+    value=f"${avg_price_state:,.0f}",
+    help="Средняя цена жилья в исходном датасете"
+)
+
+# Вычисляем разницу в процентах
+pct_diff = ((scaled_price - avg_price_state) / avg_price_state) * 100
+status = "Дороже рынка" if pct_diff > 0 else "Дешевле рынка"
+col3.metric(label="⚖️ Статус объекта", value=status, delta=f"{pct_diff:.1f}%")
 
 st.divider()
 
-# --- ВКЛАДКИ ---
-tab1, tab2, tab3 = st.tabs(["📊 Аналитика", "🗺️ Интерактивная карта", "🔍 Важность факторов"])
+# --- БЛОК 2: ВИЗУАЛИЗАЦИЯ (Графики) ---
+st.header("📊 Анализ стоимости и факторов")
 
-with tab1:
-    col_left, col_right = st.columns(2)
+# Две колонки для графиков
+g_col1, g_col2 = st.columns([2, 1]) # Левая колонка шире
+
+with g_col1:
+    st.subheader("Позиция вашей цены на рынке")
+    fig, ax = plt.subplots()
+    # Рисуем красивую кривую распределения цен
+    sns.histplot(y * 100000, bins=50, kde=True, color="skyblue", ec="white", ax=ax)
+    # Добавляем красную вертикальную линию для цены пользователя
+    ax.axvline(scaled_price, color='red', linestyle='--', linewidth=2)
+    ax.text(scaled_price * 1.05, ax.get_ylim()[1]*0.8, 'Ваш дом', color='red', fontweight='bold')
     
-    with col_left:
-        st.subheader("Распределение цен в Калифорнии")
-        fig_hist = px.histogram(y*100000, nbins=50, title="Где находится ваша цена?", 
-                               labels={'value': 'Цена ($)'}, color_discrete_sequence=['#636EFA'])
-        fig_hist.add_vline(x=scaled_price, line_dash="dash", line_color="red", annotation_text="Ваш выбор")
-        st.plotly_chart(fig_hist, use_container_width=True)
+    ax.set_title("Распределение цен на жилье в датасете", fontsize=14)
+    ax.set_xlabel("Цена ($)", fontsize=12)
+    ax.set_ylabel("Количество районов", fontsize=12)
+    # Убираем рамку графиков Seaborn для чистоты
+    sns.despine(left=True)
+    st.pyplot(fig)
 
-    with col_right:
-        st.subheader("Сравнение со средним")
-        comparison_df = pd.DataFrame({
-            "Параметр": X.columns,
-            "Ваш дом": input_df.iloc[0].values,
-            "Среднее по штату": X.mean().values
-        }).melt(id_vars="Параметр", var_name="Тип", value_name="Значение")
-        
-        fig_comp = px.bar(comparison_df, x="Параметр", y="Значение", color="Тип", barmode="group",
-                          title="Ваши параметры vs Средние")
-        st.plotly_chart(fig_comp, use_container_width=True)
-
-with tab2:
-    st.subheader("Географический анализ цен")
-    # Создаем красивую карту через Plotly
-    map_df = X.sample(2000).copy() # берем выборку для скорости
-    map_df['Price'] = y.sample(2000).values * 100000
+with g_col2:
+    st.subheader("🔍 Топ-3 фактора цены")
+    # Вычисляем важность признаков
+    importances = model.feature_importances_
+    forest_importances = pd.Series(importances, index=X.columns).sort_values(ascending=False).head(3)
     
-    fig_map = px.scatter_mapbox(map_df, lat="Latitude", lon="Longitude", color="Price", size="Price",
-                                color_continuous_scale=px.colors.cyclical.IceFire, size_max=15, zoom=5,
-                                mapbox_style="carto-positron", title="Цены на жилье по координатам")
-    
-    # Добавляем точку пользователя на карту
-    fig_map.add_scattermapbox(lat=input_df["Latitude"], lon=input_df["Longitude"], 
-                              marker=dict(size=20, color='red'), name="Ваш объект")
-    
-    st.plotly_chart(fig_map, use_container_width=True)
+    fig2, ax2 = plt.subplots()
+    # Рисуем горизонтальный барчарт Seaborn
+    sns.barplot(x=forest_importances.values, y=forest_importances.index, palette="viridis", ax2=ax2)
+    ax2.set_title("Что больше всего влияет?", fontsize=14)
+    ax2.set_xlabel("Относительная важность", fontsize=12)
+    # Убираем подпись оси Y (там названия факторов)
+    ax2.set_ylabel("")
+    sns.despine(left=True, bottom=True)
+    st.pyplot(fig2)
 
-with tab3:
-    st.subheader("Что больше всего влияет на цену?")
-    feat_imp = pd.DataFrame({'Feature': X.columns, 'Importance': model.feature_importances_}).sort_values('Importance')
-    fig_imp = px.bar(feat_imp, x='Importance', y='Feature', orientation='h', 
-                     title="Важность признаков по версии AI")
-    st.plotly_chart(fig_imp, use_container_width=True)
-    st.info("💡 Как видно из графика, доход населения (MedInc) — ключевой фактор стоимости.")
+st.divider()
 
-st.sidebar.success("Готово! Все данные обновлены.")
+# --- БЛОК 3: КАРТА И ПОДРОБНОСТИ ---
+map_col, text_col = st.columns([2, 1])
+
+with map_col:
+    st.header("🗺️ Местоположение на карте")
+    # Создаем DataFrame для стандартной карты Streamlit
+    # Она работает стабильнее всего и выглядит чисто
+    map_data = pd.DataFrame({
+        'lat': [input_df.Latitude[0]],
+        'lon': [input_df.Longitude[0]]
+    })
+    st.map(map_data, zoom=6)
+
+with text_col:
+    st.header("📋 Ваши параметры")
+    # Отображаем таблицу введенных данных вертикально для удобства чтения
+    formatted_df = input_df.T
+    formatted_df.columns = ["Значение"]
+    st.dataframe(formatted_df, use_container_width=True)
+
+# --- ФУТЕР ---
+st.divider()
+st.caption("Данные: California Housing dataset. Модель: Random Forest Regressor. Разработано с помощью Streamlit.")
