@@ -6,18 +6,24 @@ import seaborn as sns
 from sklearn.datasets import fetch_california_housing
 from sklearn.ensemble import RandomForestRegressor
 
-# --- НАСТРОЙКА СТРАНИЦЫ ---
-st.set_page_config(page_title="AI Оценка Жилья", page_icon="🏠", layout="wide")
+# --- ИНИЦИАЛИЗАЦИЯ ---
+st.set_page_config(page_title="AI Оценка Недвижимости", page_icon="🏠", layout="wide")
 
-# Кастомный CSS для красоты (закругленные углы и фон)
+# Кастомный стиль для блоков
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 1.8rem; color: #1f77b4; }
-    .stSlider { padding-bottom: 20px; }
+    .reportview-container { background: #f0f2f6; }
+    .stPlotlyChart { border-radius: 10px; }
+    div[data-testid="stMetric"] {
+        background-color: #1e2129;
+        border: 1px solid #31333f;
+        padding: 15px;
+        border-radius: 10px;
+        color: white;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ЗАГРУЗКА ДАННЫХ И МОДЕЛИ ---
 @st.cache_data
 def load_data():
     housing = fetch_california_housing()
@@ -34,88 +40,109 @@ def train_model(X, y):
 X, y = load_data()
 model = train_model(X, y)
 
-# --- БОКОВАЯ ПАНЕЛЬ (ВВОД ДАННЫХ) ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.title("⚒️ Настройка")
-    st.info("Измените параметры ниже, чтобы увидеть, как изменится цена дома.")
+    st.header("⚙️ Настройки объекта")
     
-    with st.expander("📍 Локация", expanded=True):
+    with st.expander("📍 География", expanded=True):
         lon = st.slider("Долгота", float(X.Longitude.min()), float(X.Longitude.max()), -118.2)
         lat = st.slider("Широта", float(X.Latitude.min()), float(X.Latitude.max()), 34.0)
     
-    with st.expander("🏠 Параметры строения", expanded=True):
+    with st.expander("🏗️ Строение", expanded=True):
         age = st.slider("Возраст дома", 1, 52, 25)
-        rooms = st.slider("Комнат", 1, 10, 5)
-        beds = st.slider("Спален", 1, 5, 2)
-        occup = st.slider("Жильцов", 1, 6, 3)
+        rooms = st.slider("Всего комнат", 1, 10, 5)
+        beds = st.slider("Всего спален", 1, 6, 2)
+        occup = st.slider("Жильцов (ср)", 1, 6, 3)
         
-    with st.expander("💵 Экономика района"):
-        inc = st.slider("Доход ($10k)", 0.5, 15.0, 3.8)
-        pop = st.number_input("Население", value=1200)
+    with st.expander("💰 Социо-экономика"):
+        inc = st.slider("Доход района ($10k)", 0.5, 15.0, 3.8)
+        pop = st.number_input("Население (чел)", value=1200)
 
-# Подготовка данных для модели
 input_data = pd.DataFrame({
     'MedInc': [inc], 'HouseAge': [float(age)], 'AveRooms': [float(rooms)],
     'AveBedrms': [float(beds)], 'Population': [float(pop)], 'AveOccup': [float(occup)],
     'Latitude': [lat], 'Longitude': [lon]
 })
 
-# --- ГЛАВНЫЙ ИНТЕРФЕЙС ---
-st.title("🏠 Прогноз стоимости недвижимости в Калифорнии")
-st.write("Интеллектуальный анализ рыночной стоимости на основе машинного обучения.")
+# --- ОСНОВНОЙ ЭКРАН ---
+st.title("🏠 Система AI-аналитики недвижимости")
+st.caption("Профессиональный инструмент оценки стоимости жилья в штате Калифорния")
 
-# 1. СЕКЦИЯ МЕТРИК (Главные цифры)
+# 1. СЕКЦИЯ МЕТРИК
 price = model.predict(input_data)[0] * 100000
 avg_price = y.mean() * 100000
+diff_pct = ((price - avg_price) / avg_price) * 100
 
-m_col1, m_col2, m_col3 = st.columns(3)
-with m_col1:
-    st.metric("Оценочная стоимость", f"${price:,.0f}", delta=f"{price-avg_price:,.0f} $")
-with m_col2:
-    st.metric("Средняя по штату", f"${avg_price:,.0f}")
-with m_col3:
-    diff_pct = ((price - avg_price) / avg_price) * 100
-    st.metric("Разница с рынком", f"{diff_pct:.1f}%", delta_color="inverse")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Прогноз цены", f"${price:,.0f}")
+m2.metric("Средняя по штату", f"${avg_price:,.0f}")
+m3.metric("Разница $", f"{price - avg_price:+,.0f}$")
+m4.metric("Разница %", f"{diff_pct:+.1f}%")
 
-st.divider()
+st.write("---")
 
-# 2. ОСНОВНОЙ КОНТЕНТ (Две колонки)
-left_col, right_col = st.columns([1.2, 1])
+# 2. ОСНОВНОЙ БЛОК АНАЛИЗА (ДВЕ КОЛОНКИ С ОДИНАКОВОЙ ВЫСОТОЙ)
+col_main_left, col_main_right = st.columns([1, 1])
 
-with left_col:
-    st.subheader("📊 Аналитика цен")
-    
-    # График распределения
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.set_style("whitegrid")
-    sns.histplot(y * 100000, bins=40, kde=True, color="#3498db", alpha=0.6)
-    plt.axvline(price, color='red', linestyle='--', label='Ваш прогноз')
-    plt.title("Где находится ваша цена относительно других?")
-    plt.xlabel("Цена дома ($)")
-    plt.ylabel("Частота")
+with col_main_left:
+    st.subheader("📊 Анализ рыночной позиции")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.set_style("darkgrid")
+    sns.histplot(y * 100000, bins=50, kde=True, color="#00d4ff", alpha=0.4)
+    plt.axvline(price, color='red', linestyle='--', linewidth=3, label='Ваш прогноз')
+    plt.title("Распределение цен в Калифорнии", fontsize=15, pad=20)
+    plt.xlabel("Стоимость дома ($)")
     plt.legend()
     st.pyplot(fig)
     
-    st.write("**Что это значит?** Красная линия показывает вашу цену на фоне всех домов штата. Если она справа от «горба» — ваш дом дороже большинства.")
+    with st.expander("💡 Что это значит?"):
+        st.write(f"""
+        Ваш объект оценивается в **${price:,.0f}**. 
+        Это значение находится в {'верхнем' if price > avg_price else 'нижнем'} ценовом сегменте штата. 
+        Основное влияние на эту цифру оказал параметр **{X.columns[np.argmax(model.feature_importances_)]}**.
+        """)
 
-with right_col:
-    st.subheader("🗺️ География объекта")
-    # Маленькая удобная карта
+with col_main_right:
+    st.subheader("🗺️ Точное расположение")
+    # Карта теперь вровень с графиком
     map_df = pd.DataFrame({'lat': [lat], 'lon': [lon]})
-    st.map(map_df, zoom=7, use_container_width=True)
+    st.map(map_df, zoom=8, use_container_width=True)
     
-    st.subheader("🔑 Ключевые факторы")
-    # Важность признаков (только топ-3)
-    feat_imp = pd.Series(model.feature_importances_, index=X.columns).sort_values().tail(3)
-    fig2, ax2 = plt.subplots(figsize=(6, 3))
-    feat_imp.plot(kind='barh', color='#2ecc71', ax=ax2)
-    plt.title("Что больше всего влияет на цену?")
+    st.subheader("🔑 Влияние факторов")
+    # Горизонтальный график важности
+    feat_imp = pd.Series(model.feature_importances_, index=X.columns).sort_values()
+    fig2, ax2 = plt.subplots(figsize=(10, 4.5))
+    colors = ['#2c3e50' if x < feat_imp.max() else '#e74c3c' for x in feat_imp]
+    feat_imp.plot(kind='barh', color=colors, ax=ax2)
+    plt.title("Вес параметров в итоговой цене", fontsize=12)
     st.pyplot(fig2)
 
+st.write("---")
+
+# 3. НИЖНЯЯ СЕКЦИЯ: СРАВНЕНИЕ И ДЕТАЛИ
+st.header("🔍 Детальное сравнение")
+down_col1, down_col2 = st.columns(2)
+
+with down_col1:
+    st.write("**Ваши показатели vs Средние по штату**")
+    comparison = pd.DataFrame({
+        "Ваш выбор": input_data.iloc[0],
+        "Среднее": X.mean()
+    })
+    # Нормализуем для графика (просто для наглядности)
+    st.bar_chart(comparison)
+
+with down_col2:
+    st.write("**Справочник параметров**")
+    descriptions = {
+        "MedInc": "Средний доход семей в районе (влияет сильнее всего)",
+        "HouseAge": "Средний возраст зданий в округе",
+        "AveRooms": "Среднее количество комнат в домах",
+        "AveOccup": "Среднее количество жильцов в одном доме",
+        "Population": "Общее количество людей в этом районе"
+    }
+    for k, v in descriptions.items():
+        st.write(f"**{k}**: {v}")
+
 st.divider()
-
-# 3. ПОДРОБНАЯ ТАБЛИЦА (внизу)
-with st.expander("📋 Посмотреть все технические параметры ввода"):
-    st.table(input_data)
-
-st.caption("© 2026 AI Real Estate Analyzer. Все расчеты являются вероятностными.")
+st.caption("Данные актуальны на основе California Housing Dataset. Разработка: AI Predictor Lab.")
