@@ -11,5 +11,5 @@ def load_data():
     X = pd.DataFrame(housing.data, columns=housing.feature_names)
     y = pd.Series(housing.target, name="PRICE")
     return X, y
-
+ 
 X, y = load_data()
