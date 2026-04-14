@@ -44,23 +44,38 @@ st.sidebar.header("⚙️ Характеристики дома")
 
 def user_input_features():
     inputs = {}
-    # Группируем слайдеры по смыслу
+    
+    # Сначала создаем слайдеры в боковой панели (в любом порядке)
+    st.sidebar.header("⚙️ Характеристики дома")
+    
     with st.sidebar.expander("📍 Локация и возраст", expanded=True):
-        inputs['Longitude'] = st.slider("Долгота", float(X.Longitude.min()), float(X.Longitude.max()), float(X.Longitude.mean()))
-        inputs['Latitude'] = st.slider("Широта", float(X.Latitude.min()), float(X.Latitude.max()), float(X.Latitude.mean()))
-        inputs['HouseAge'] = st.slider("Возраст дома (лет)", 1, 52, 28)
+        lon = st.slider("Долгота", float(X.Longitude.min()), float(X.Longitude.max()), float(X.Longitude.mean()))
+        lat = st.slider("Широта", float(X.Latitude.min()), float(X.Latitude.max()), float(X.Latitude.mean()))
+        age = st.slider("Возраст дома (лет)", 1.0, 52.0, 28.0)
 
     with st.sidebar.expander("🏗️ Параметры здания", expanded=True):
-        inputs['AveRooms'] = st.slider("Среднее кол-во комнат", 1.0, 10.0, 5.0)
-        inputs['AveBedrms'] = st.slider("Среднее кол-во спален", 1.0, 5.0, 1.0)
-        inputs['AveOccup'] = st.slider("Жильцов в доме (среднее)", 1.0, 6.0, 3.0)
+        rooms = st.slider("Среднее кол-во комнат", 1.0, 10.0, 5.0)
+        bedrms = st.slider("Среднее кол-во спален", 1.0, 5.0, 1.0)
+        occup = st.slider("Жильцов в доме (среднее)", 1.0, 6.0, 3.0)
 
     with st.sidebar.expander("💰 Экономика района"):
-        inputs['MedInc'] = st.slider("Средний доход (в $10k)", 0.5, 15.0, 3.8)
-        inputs['Population'] = st.number_input("Население района", value=1500)
+        inc = st.slider("Средний доход (в $10k)", 0.5, 15.0, 3.8)
+        pop = st.number_input("Население района", value=1500)
 
-    return pd.DataFrame(inputs, index=[0])
+    # А ТЕПЕРЬ САМОЕ ВАЖНОЕ: собираем словарь строго по порядку колонок из X
+    # Это гарантирует, что модель не запутается
+    ordered_input = {
+        'MedInc': inc,
+        'HouseAge': age,
+        'AveRooms': rooms,
+        'AveBedrms': bedrms,
+        'Population': float(pop),
+        'AveOccup': occup,
+        'Latitude': lat,
+        'Longitude': lon
+    }
 
+    return pd.DataFrame(ordered_input, index=[0])
 input_df = user_input_features()
 
 # --- РАСЧЕТ ПРЕДСКАЗАНИЯ ---
