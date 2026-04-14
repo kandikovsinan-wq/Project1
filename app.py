@@ -142,20 +142,21 @@ with g_col1:
 
 with g_col2:
     st.subheader("🔍 Топ-3 фактора цены")
-    # Вычисляем важность признаков
     importances = model.feature_importances_
     forest_importances = pd.Series(importances, index=X.columns).sort_values(ascending=False).head(3)
     
+    # Исправленный блок:
     fig2, ax2 = plt.subplots()
-    # Рисуем горизонтальный барчарт Seaborn
-    sns.barplot(x=forest_importances.values, y=forest_importances.index, palette="viridis", ax2=ax2)
+    # Мы убрали ax2=ax2 из аргументов sns.barplot, так как это вызывает ошибку в новых версиях
+    # Также явно передаем данные, чтобы избежать конфликта palette
+    sns.barplot(x=forest_importances.values, y=forest_importances.index, hue=forest_importances.index, palette="viridis", legend=False)
+    
     ax2.set_title("Что больше всего влияет?", fontsize=14)
     ax2.set_xlabel("Относительная важность", fontsize=12)
-    # Убираем подпись оси Y (там названия факторов)
     ax2.set_ylabel("")
     sns.despine(left=True, bottom=True)
     st.pyplot(fig2)
-
+    
 st.divider()
 
 # --- БЛОК 3: КАРТА И ПОДРОБНОСТИ ---
